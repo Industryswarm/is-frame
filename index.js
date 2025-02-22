@@ -28,7 +28,32 @@ const http = require("http"),
       process = require('node:process'),
       cwd = process.cwd(),
       fs = require('fs'),
-      path = require('path');
+      path = require('path'),
+      pkg = require(cwd + '/package.json');
+
+
+// Print Startup Banner:
+console.log("==========================================");
+console.log("Welcome to IS-FRAME v" + pkg.version + ".");
+console.log("Created by: Darren Smith.");
+console.log("==========================================\n\n");
+
+
+// Load Application:
+const loadApplication = function(site){
+    try {
+        sites[site] = fork(path.join(__dirname, '/lib/loader.js'), [site]);
+        sites[site].on("close", (code) => {
+            if(code !== 1) {
+                console.log("IS-Frame: Application '" + site + "' Terminated (Code: " + code + "). Restarting Now...");
+                setTimeout(() => {
+                    loadApplication(site);
+                }, 25);
+            }
+        });
+        sites[site].send('start');
+    } catch(err) { console.log("IS-Frame: Loading \"" + site + "\" Application...  ERROR!!! Not Loaded.") }
+}
 
 
 // Enumerate and Load Apps:
@@ -39,16 +64,24 @@ fs.readdir(cwd + "/apps", function (err, filesPath) {
         if(!apps[i].endsWith(".DS_Store")) {
             let site = apps[i].split("/");
             site = site[site.length - 1];
-            const cfg = require(cwd + "/apps/" + site + "/app.json");
-            const socketPath = "/tmp/is-frame_" + site + ".sock";
-            for(const env in cfg.environments) {
-                hosts[cfg.environments[env]] = {
-                    socketPath: socketPath,
-                    site: site
+            try {
+                const cfg = require(cwd + "/apps/" + site + "/app.json");
+                const socketPath = "/tmp/is-frame_" + site + ".sock";
+                if (!site.includes("*")) {
+                    for (const env in cfg.environments) {
+                        hosts[cfg.environments[env]] = {
+                            socketPath: socketPath,
+                            site: site
+                        }
+                    }
+                } else {
+                    hosts["*"] = {
+                        socketPath: socketPath,
+                        site: site
+                    }
                 }
-            }
-            sites[site] = fork(path.join(__dirname, '/lib/loader.js'), [site]);
-            sites[site].send('start');
+            } catch(err) { console.log("IS-Frame: Loading \"" + site + "\" Application...  ERROR!!! Not Loaded.") }
+            loadApplication(site);
         }
     }
 });
@@ -61,12 +94,14 @@ app.use(bodyParser.urlencoded({ extended: false }));
 
 
 // Add a simple route for common static content served from 'static' (available to all apps):
-app.use("/",express.static(cwd + "/static"));
+try {
+    app.use("/",express.static(cwd + "/static"));
+} catch(err) { console.log("IS-Frame: Error Mounting Common Static File Path") }
 
 
 // Proxy Incoming HTTP Requests to Unix Socket of Appropriate Child Process and Handle Response:
 app.use(function(req, res) {
-    if(!hosts[req.host]) {
+    if(!hosts[req.host] && !hosts["*"]) {
         if(!res.headersSent) {
             fs.readFile(path.join(__dirname, './public/errors/404.html'), 'utf8', function (err, data) {
                 if (err) throw err;
@@ -79,11 +114,12 @@ app.use(function(req, res) {
         contentType = "";
     if(!req.headers) req.headers = {};
     const options = {
-        socketPath: hosts[req.host].socketPath,
         path: req.path,
         method: req.method,
         headers: req.headers,
     };
+    if(hosts[req.host]) options.socketPath = hosts[req.host].socketPath;
+    else if (hosts["*"]) options.socketPath = hosts["*"].socketPath;
     if(req.headers["content-type"]) contentType = req.headers["content-type"];
     if(req.body && contentType.includes("x-www-form-urlencoded")) {
         for(let key in req.body)
@@ -98,26 +134,30 @@ app.use(function(req, res) {
         for(let key in req.query) queryString += key + "=" + req.query[key] + "&";
         if(queryString.length > 0) options.path += "?" + queryString.slice(0, -1);
     }
-    const outgoingReq = http.request(options, (incomingRes) => {
-        let body = "";
-        incomingRes.resume();
-        res.status(incomingRes.statusCode);
-        res.set(incomingRes.headers);
-        incomingRes.pipe(res);
-        incomingRes.on('end', () => {
-            if (!incomingRes.complete)  {
-                res.send();
-                return;
-            }
-            if(!res.headersSent && body) res.send(body);
-            else if (!res.headersSent && !body) res.send("ERROR: No Body");
+    try {
+        const outgoingReq = http.request(options, (incomingRes) => {
+            let body = "";
+            incomingRes.resume();
+            res.status(incomingRes.statusCode);
+            res.set(incomingRes.headers);
+            incomingRes.pipe(res);
+            incomingRes.on('end', () => {
+                if (!incomingRes.complete) {
+                    res.send();
+                    return;
+                }
+                if (!res.headersSent && body) res.send(body);
+                else if (!res.headersSent && !body) res.send("IS-Frame: Error - No Body to Return");
+            });
         });
-    });
-    outgoingReq.on('error', (e) => {
-        if(!res.headersSent) res.send();
-    });
-    if(bodyData) outgoingReq.write(bodyData);
-    outgoingReq.end();
+        outgoingReq.on('error', (e) => {
+            if (!res.headersSent) res.send();
+        });
+        if (bodyData) outgoingReq.write(bodyData);
+        outgoingReq.end();
+    } catch(err) {
+        console.log("IS-Frame: Error Routing Request to Application");
+    }
 });
 
 
@@ -151,11 +191,8 @@ server.on('upgrade', function upgrade(request, socket, head) {
 // Begin Listening for Incoming Requests:
 const port = 3000;
 server.listen(port, function() {
-    console.log("===========================================================");
-    console.log("Welcome to IS-FRAME v3.0.1.");
-    console.log("Starting up HTTP / WebSocket Listener on port " + port + ".");
-    console.log("Created by: Darren Smith.");
-    console.log("===========================================================\n\n");
+    console.log("IS-Frame: Starting up HTTP / WebSocket Listener on port " + port + ".\n\n");
+    console.log("IS-Frame: Loading Applications...\n\n");
 });
 
 

@@ -18,6 +18,9 @@
 - [DONE] Implementation of Error Handling Middleware / Utility - Supporting 404 Page Not Found initially.
 - [DONE] Implementation of Swagger Definition File Generator that sources routes from the NodeRED Flow File + Express-Powered File-Based Route Controllers.
 - [DONE] Support for Defining Many Routes Across Different Hosts in File Router.
+- [DONE] Add Support for Environments (Incl. App URLs) to Package.JSON, File Router and Resource Router.
+- [DONE] Automatically Restart Application if it Crashes.
+
 
 ### Not Started:
 
@@ -26,7 +29,7 @@
 - [NOT STARTED] Allow Swagger Definition File + Swagger UIs to be Filtered by Tags.
 - [NOT STARTED] Integrate an SSH Server into the Framework for exploring and executing routes from a shell.
 - [NOT STARTED] Integrate a WebSockets Server into the Framework.
-- [NOT STARTED] Add Support for Environments (Incl. App URLs) to Package.JSON, File Router and Resource Router.
+- [NOT STARTED] Watch Filesystem and reload Controllers, Resources and App JSON Configuration if they change / are updated. Allow this function to be toggled as on or off at an application or proxy level.
 
 
 ## Identity Application
