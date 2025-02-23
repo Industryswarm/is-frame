@@ -105,6 +105,7 @@ app.use(function(req, res) {
         if(!res.headersSent) {
             fs.readFile(path.join(__dirname, './public/errors/404.html'), 'utf8', function (err, data) {
                 if (err) throw err;
+                data.replace("Page Not Found!", "Host Not Found!");
                 res.status(404).send(data);
             });
         }
